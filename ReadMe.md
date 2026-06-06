@@ -1,71 +1,53 @@
 # HSKL
 
-HSKL is an experimental web programming language inspired by PHP and Haskell.
+A web language with Haskell-like syntax embedded directly into HTML,
+inspired by PHP's execution model.
 
-It allows developers to write HTML and HSKL code in the same file, separating server-side and client-side logic through annotations while keeping templates simple and readable.
+## Hello World
 
-## Example
-
-```hskl
 <?hs
-
 @server
-saludo :: String -> String
-saludo nombre = "Hola " ++ nombre ++ " desde HSKL!"
+sayHi :: String -> String
+sayHi name = "Hi, " ++ name ++ " from HSKL!"
+?>
+<html>
+  <body>
+    <p><?= sayHi "world" ?></p>
+  </body>
+</html>
 
+## How it works
+
+Code lives inside `<?hs ... ?>` blocks embedded in HTML.
+
+- `@server` — runs on the server at request time  
+- `@client` — compiles to JavaScript and runs in the browser  
+- `<?= expr ?>` — evaluates an expression and renders it inline
+
+## A fuller example
+
+<?hs
 @client
 hi :: String -> String
-hi name = setHtml "cosa" $ "<h2>Hola " ++ name ++ "</h2>"
-
-titulo :: String
-titulo = "Bienvenido a HSKL"
-
+hi name = setHtml "output" $ "<h2>Hello " ++ name ++ "</h2>"
+@client
+myValue::String
+myValue= getValue "thing"
 ?>
-
 <html>
-<head>
-    <title><?= titulo ?></title>
-</head>
-<body>
-    <h1><?= titulo ?></h1>
-    <p><?= saludo "PePe" ?></p>
-
-    <input type="text" id="wea"/>
-    <div id="cosa"></div>
-
-    <button onclick="hi()">Saludar</button>
-</body>
+  <body>
+    <input type="text" id="thing"/>
+    <button onclick="hi(myValue())">Click</button>
+    <div id="output"></div>
+  </body>
 </html>
-```
-
-## Features
-
-- HTML and HSKL in the same file
-- Server-side functions (`@server`)
-- Client-side functions (`@client`)
-- Embedded expressions (`<?= ... ?>`)
-- Haskell-inspired syntax
-- Dynamic HTML rendering
-- Experimental transpilation/interpreter architecture
-
-## Goals
-
-- Simple web development workflow
-- Strongly typed syntax
-- Clear separation between client and server code
-- Familiar experience for PHP developers with a more functional approach
 
 ## Status
 
-⚠️ Under active development. Syntax and features may change.
+Functional but incomplete. Core execution model works.
+Not production-ready — built out of curiosity.
 
-## Inspiration
+## Why
 
-- PHP
-- Haskell
-- Laravel Blade
-- ASP.NET Razor
-
-## License
-
-MIT
+Haskell-style syntax in a context where code and markup
+live together the way PHP does. That's it.

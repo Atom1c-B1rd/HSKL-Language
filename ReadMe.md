@@ -5,35 +5,45 @@ inspired by PHP's execution model.
 
 ## Hello World
 
+```haskell
 <?hs
 @server
 sayHi :: String -> String
 sayHi name = "Hi, " ++ name ++ " from HSKL!"
 ?>
+```
+
+```html
 <html>
   <body>
     <p><?= sayHi "world" ?></p>
   </body>
 </html>
+```
 
 ## How it works
 
 Code lives inside `<?hs ... ?>` blocks embedded in HTML.
 
-- `@server` — runs on the server at request time  
-- `@client` — compiles to JavaScript and runs in the browser  
+- `@server` — runs on the server at request time
+- `@client` — compiles to JavaScript and runs in the browser
 - `<?= expr ?>` — evaluates an expression and renders it inline
 
 ## A fuller example
 
+```haskell
 <?hs
 @client
 hi :: String -> String
 hi name = setHtml "output" $ "<h2>Hello " ++ name ++ "</h2>"
+
 @client
-myValue::String
-myValue= getValue "thing"
+myValue :: String
+myValue = getValue "thing"
 ?>
+```
+
+```html
 <html>
   <body>
     <input type="text" id="thing"/>
@@ -41,6 +51,7 @@ myValue= getValue "thing"
     <div id="output"></div>
   </body>
 </html>
+```
 
 ## Status
 

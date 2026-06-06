@@ -5,15 +5,12 @@ inspired by PHP's execution model.
 
 ## Hello World
 
-```haskell
+```html
 <?hs
 @server
 sayHi :: String -> String
 sayHi name = "Hi, " ++ name ++ " from HSKL!"
 ?>
-```
-
-```html
 <html>
   <body>
     <p><?= sayHi "world" ?></p>

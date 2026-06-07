@@ -14,13 +14,13 @@ optsParser :: Parser Opts
 optsParser = Opts
     <$> option auto
         ( long "port"   <> short 'p' <> metavar "PORT"
-        <> value 3000   <> help "Puerto del servidor (default: 3000)" )
+        <> value 8080   <> help "Server Port (default: 8080)" )
     <*> strOption
         ( long "root"   <> short 'r' <> metavar "DIR"
-        <> value "./"  <> help "Directorio raíz .hskl (default: ./pages)" )
+        <> value "./"  <> help "Root Dir .hskl (default: ./pages)" )
     <*> strOption
         ( long "static" <> short 's' <> metavar "DIR"
-        <> value "./" <> help "Archivos estáticos (default: ./public)" )
+        <> value "./" <> help "Statics (default: ./public)" )
 
 main :: IO ()
 main = do

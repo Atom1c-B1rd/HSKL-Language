@@ -8,7 +8,7 @@ data ServerConfig = ServerConfig
 
 defaultConfig :: ServerConfig
 defaultConfig = ServerConfig
-    { configPort   = 3000
+    { configPort   = 8080
     , configRoot   = "."
     , configStatic = "."
     }

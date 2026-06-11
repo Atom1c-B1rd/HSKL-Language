@@ -1,12 +1,14 @@
 <?hs
 
+
+
 @server
 saludo :: String -> String
 saludo nombre = "Hola " ++ nombre ++ " desde HSKL!"
 
 @client
-hi:: String -> String
-hi name = setHtml "cosa" $ "<h2> hola "++name++"</h2>" 
+hi:: Int -> String
+hi n = setHtml "cosa" $ "<h2> hola "++ show n ++"</h2>" 
 
 @client
 miValor::String

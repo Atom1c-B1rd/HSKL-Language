@@ -1,6 +1,7 @@
 cabal-version:      3.0
 name:               Hskl-Base
 version:            0.1.0.0
+
 -- synopsis:
 -- description:
 license:            BSD-3-Clause
@@ -11,6 +12,9 @@ maintainer:         116822580+Atom1c-B1rd@users.noreply.github.com
 build-type:         Simple
 extra-doc-files:    CHANGELOG.md
 -- extra-source-files:
+
+
+
 
 common warnings
     ghc-options: -Wall -threaded
@@ -25,6 +29,7 @@ common warnings
 executable Hskl-Base
     import:           warnings
     main-is:          Main.hs
+    
     -- other-modules:
     other-modules:
         Interpreter.Builtins
@@ -37,7 +42,8 @@ executable Hskl-Base
         Server.Server
         Server.ServerConfig
     build-depends:  base, text, megaparsec, parser-combinators, scotty, wai, wai-extra, warp, http-types, directory, filepath, containers, 
-                    unordered-containers, stm, async, aeson, aeson-pretty, exceptions, safe-exceptions, mtl, transformers,
-                    fast-logger, wai-logger, optparse-applicative
+                unordered-containers, stm, async, aeson, aeson-pretty, exceptions, safe-exceptions, mtl, transformers,
+                fast-logger, wai-logger, optparse-applicative,
+                Atom1c-HTML, template-haskell, haskell-src-meta
     hs-source-dirs:   app, src
     default-language: GHC2021

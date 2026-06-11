@@ -69,6 +69,7 @@ data Type
     | TyList Type           -- [Int]
     | TyTuple [Type]        -- (Int, String)
     | TyUnit                -- ()
+    | TyHtml
     deriving (Show, Eq)
 
 -- ─── EXPRESIONES ─────────────────────────────────────────────────────────────

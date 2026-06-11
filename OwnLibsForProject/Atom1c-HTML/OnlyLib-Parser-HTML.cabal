@@ -1,0 +1,39 @@
+cabal-version:      3.0
+name:               OnlyLib-Parser-HTML
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Atom1c-B1rd
+maintainer:         116822580+Atom1c-B1rd@users.noreply.github.com
+-- copyright:
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+    exposed-modules:  AtomHtml
+                      AtomHtml.Types
+                      AtomHtml.Render
+                      AtomHtml.Parser
+    build-depends:    base ^>=4.22.0.0, template-haskell, text, megaparsec, haskell-src-meta, parser-combinators
+    hs-source-dirs:   src
+    default-language: GHC2021
+
+test-suite OnlyLib-Parser-HTML-test
+    import:           warnings
+    default-language: GHC2021
+    -- other-modules:
+    -- other-extensions:
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    build-depends:
+        base ^>=4.22.0.0, text, hspec,
+        
+        OnlyLib-Parser-HTML

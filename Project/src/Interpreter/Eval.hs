@@ -59,6 +59,18 @@ eval env (EUnOp op expr)        = do
     evalUnOp op v
 eval env (EList exprs)          = VList  <$> mapM (eval env) exprs
 eval env (ETuple exprs)         = VTuple <$> mapM (eval env) exprs
+eval env (EHtml nodes) = do
+    parts <- mapM (evalHtmlNode env) nodes
+    return $ VHtml (T.concat parts)
+
+
+evalHtmlNode :: Env -> HtmlNode -> IO Text
+evalHtmlNode _   (HtmlRaw t)        = return t
+evalHtmlNode env (HtmlExpr e)       = eval env e >>= valueToHtml
+evalHtmlNode env (HtmlComp tag cs)  = do
+    inner <- T.concat <$> mapM (evalHtmlNode env) cs
+    return $ "<" <> tag <> ">" <> inner <> "</" <> tag <> ">"
+
 
 -- | Aplica un valor función a un argumento
 applyValue :: Value -> Value -> IO Value

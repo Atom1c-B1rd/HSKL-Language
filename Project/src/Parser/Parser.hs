@@ -2,6 +2,8 @@
 module Parser.Parser where
 
 import Data.Text (Text)
+import qualified AtomHtml.Parser as AH
+import qualified AtomHtml.Types  as AH (HtmlNode(..))
 import qualified Data.Text as T
 import Data.Void (Void)
 import Data.Maybe (fromMaybe)
@@ -99,6 +101,10 @@ parseType = do
         void $ symbol "->"
         TyFun t <$> parseType    -- recursivo para asociar a la derecha
 
+
+returnType :: Type -> Type
+returnType (TyFun _ r) = returnType r
+returnType t           = t
 -- | Aplicación de tipos: "Maybe Int", "IO String"
 -- tiene más precedencia que ->
 parseTypeApp :: Parser Type
@@ -111,7 +117,7 @@ parseTypeApp = do
 parseTypeAtom :: Parser Type
 parseTypeAtom = choice
     [ TyUnit <$ try (symbol "()")
-    -- EJEMPLO: between parsea algo entre dos delimitadores
+    , TyHtml <$ try (keyword "Html")
     , TyTuple <$> between (symbol "(") (symbol ")") (parseType `sepBy1` symbol ",")
     , TyList  <$> between (symbol "[") (symbol "]") parseType
     -- paréntesis solos para agrupar: (String -> Int)
@@ -423,24 +429,48 @@ parseClassMember = do
 -- nombre args = expr
 parseFuncDecl :: Parser FuncDecl
 parseFuncDecl = do
-    flag <- parseFlag
+    flag    <- parseFlag
     scn
-    name <- parseIdent
-    -- EJEMPLO: `try` para intentar parsear la firma de tipo
-    -- si falla (no hay ::) volvemos y parseamos directo la definición
-    sig  <- optional $ try $ do
+    name    <- parseIdent
+    sig     <- optional $ try $ do
         void $ symbol "::"
         parseType
     scn
-    -- ahora la definición: nombre args = expr
     defName <- parseIdent
     if defName /= name
         then fail $ "esperaba definición de '" ++ T.unpack name ++ "' pero encontré '" ++ T.unpack defName ++ "'"
         else do
             args <- many parseIdent
             void $ symbol "="
-            body <- parseExpr
+            body <- case fmap returnType sig of
+                Just TyHtml -> EHtml <$> parseHtmlBody  -- ← rama nueva
+                _           -> parseExpr
             return $ FuncDecl flag name sig args body
+
+
+parseHtmlBody :: Parser [HtmlNode]
+parseHtmlBody = do
+    raw <- T.unpack <$> parseRawBlock
+    case AH.parseHtml raw of
+        Left err    -> fail $ "HTML inválido: " ++ show err
+        Right nodes -> mapM convertNode nodes
+
+parseRawBlock :: Parser Text
+parseRawBlock = T.pack <$> manyTill anySingle end
+  where
+    end = lookAhead $ void (string "?>")
+               <|> void (try parseDecl)
+               <|> eof
+
+convertNode :: AH.HtmlNode -> Parser HtmlNode
+convertNode (AH.HtmlText t)              = return $ HtmlRaw t
+convertNode (AH.HtmlElement tag attrs cs) = do
+    children <- mapM convertNode cs
+    return $ HtmlComp tag children
+convertNode (AH.HtmlExpr exprStr)        =
+    case parse parseExpr "<interp>" (T.pack exprStr) of
+        Left err -> fail $ "expresión inválida en <?= " ++ exprStr ++ " ?>: " ++ show err
+        Right e  -> return $ HtmlExpr e
 
 -- ─── BLOQUES DE INDENTACIÓN ──────────────────────────────────────────────────
 

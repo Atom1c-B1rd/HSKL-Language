@@ -3,7 +3,7 @@ module Transpiler.JsGen where
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Parser.AST (Expr(..), HtmlNode(..), FuncDecl(..), DoStmt(..), BinOp(..), UnOp(..), CaseAlt(..), Pat(..), Literal(..))
+import Parser.AST (Expr(..), HtmlNode(..), FuncDecl(..), DoStmt(..), BinOp(..), UnOp(..), CaseAlt(..), Pat(..), Literal(..), Type(..))
 import Lexer.Tokens (Flag(..))
 
 -- ─── ENTRY POINT ─────────────────────────────────────────────────────────────
@@ -20,18 +20,41 @@ import Lexer.Tokens (Flag(..))
 
 transpileDecl :: FuncDecl -> Text
 transpileDecl fd =
-    -- Si no tiene argumentos: función sin parámetros
-    -- Si tiene argumentos: función con parámetros
-    case funcArgs fd of
-        [] ->
-            "function " <> funcName fd <> "() {\n"
-            <> "  return " <> transpileExpr (funcBody fd) <> ";\n"
-            <> "}\n"
-        args ->
-            "function " <> funcName fd
-            <> "(" <> T.intercalate ", " args <> ") {\n"
-            <> "  return " <> transpileExpr (funcBody fd) <> ";\n"
-            <> "}\n"
+    case (fmap returnType (funcType fd), funcBody fd) of
+        -- función que devuelve Html: genera [html| ... |]
+        (Just TyHtml, EHtml nodes) ->
+            funcName fd <> " :: T.Text\n"
+            <> funcName fd <> argsStr <> " = [html|\n"
+            <> reconstructHtml nodes
+            <> "\n|]\n"
+        -- resto: JS como antes
+        _ -> case funcArgs fd of
+            [] ->
+                "function " <> funcName fd <> "() {\n"
+                <> "  return " <> transpileExpr (funcBody fd) <> ";\n"
+                <> "}\n"
+            args ->
+                "function " <> funcName fd
+                <> "(" <> T.intercalate ", " args <> ") {\n"
+                <> "  return " <> transpileExpr (funcBody fd) <> ";\n"
+                <> "}\n"
+  where
+    argsStr
+        | null (funcArgs fd) = ""
+        | otherwise = " " <> T.unwords (funcArgs fd)
+
+returnType :: Type -> Type
+returnType (TyFun _ r) = returnType r
+returnType t           = t
+
+reconstructHtml :: [HtmlNode] -> Text
+reconstructHtml = T.concat . map go
+  where
+    go (HtmlRaw t)       = t
+    go (HtmlExpr e)      = "<?= " <> transpileExpr e <> " ?>"
+    go (HtmlComp tag cs) = "<" <> tag <> ">"
+                        <> reconstructHtml cs
+                        <> "</" <> tag <> ">"
 
 -- ─── EXPRESIONES ─────────────────────────────────────────────────────────────
 --

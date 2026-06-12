@@ -43,7 +43,7 @@ executable Hskl-Base
         Server.ServerConfig
     build-depends:  base, text, megaparsec, parser-combinators, scotty, wai, wai-extra, warp, http-types, directory, filepath, containers, 
                 unordered-containers, stm, async, aeson, aeson-pretty, exceptions, safe-exceptions, mtl, transformers,
-                fast-logger, wai-logger, optparse-applicative,
+                fast-logger, wai-logger, optparse-applicative, bytestring,
                 Atom1c-HTML, template-haskell, haskell-src-meta
     hs-source-dirs:   app, src
     default-language: GHC2021

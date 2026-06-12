@@ -30,11 +30,15 @@ data Decl
 -- hi :: String      <- firma de tipo
 -- hi x = expr       <- definición
 data FuncDecl = FuncDecl
-    { funcFlag :: Maybe Flag    -- @client / @server / @state
-    , funcName :: Text
-    , funcType :: Maybe Type    -- la firma es opcional en el parser
-    , funcArgs :: [Text]
-    , funcBody :: Expr
+    { funcFlag  :: Maybe Flag
+    , funcName  :: Text
+    , funcType  :: Maybe Type
+    , funcCases :: [FuncCase]    
+    } deriving (Show, Eq)
+
+data FuncCase = FuncCase
+    { caseArgs :: [Pat]           
+    , caseBody :: Expr
     } deriving (Show, Eq)
 
 -- | data Arbol = Hoja | Nodo Int Arbol Arbol
@@ -46,6 +50,7 @@ data DataDecl = DataDecl
 data Constructor = Constructor
     { conName   :: Text
     , conFields :: [Type]
+    , conRecords:: [(Text,Type)]
     } deriving (Show, Eq)
 
 -- | class Nombre impl Ejemplo { @public cosa :: String ... }
@@ -60,6 +65,8 @@ data ClassMember = ClassMember
     , memberDecl :: FuncDecl
     } deriving (Show, Eq)
 
+
+
 -- ─── TIPOS ───────────────────────────────────────────────────────────────────
 
 data Type
@@ -70,6 +77,9 @@ data Type
     | TyTuple [Type]        -- (Int, String)
     | TyUnit                -- ()
     | TyHtml
+    | TyRequest
+    | TyResponse Type
+    | TyRouter  Type
     deriving (Show, Eq)
 
 -- ─── EXPRESIONES ─────────────────────────────────────────────────────────────
@@ -133,6 +143,11 @@ data HtmlNode
     | HtmlExpr Expr       
     | HtmlComp Text [HtmlNode]
     deriving (Show, Eq)
+
+data HttpMethod
+    = Get | Post | Put | Patch | Delete
+    deriving (Show, Eq)
+
 
 -- | Alternativa de case
 data CaseAlt = CaseAlt

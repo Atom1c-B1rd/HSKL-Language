@@ -71,7 +71,25 @@ builtins =
     , ("fromMaybe",  mkFun2 builtinFromMaybe)
     , ("isJust",     mkFun1 builtinIsJust)
     , ("isNothing",  mkFun1 builtinIsNothing)
-
+    -- Response helpers
+    , ("ok",         mkFun1 builtinOk)
+    , ("created",    mkFun1 builtinCreated)
+    , ("noContent",  VResponse 204 VUnit)
+    , ("notFound",   mkFun1 builtinNotFound)
+    , ("badRequest", mkFun1 builtinBadRequest)
+    , ("redirect",   mkFun1 builtinRedirect)
+    -- Router
+    , ("router",     mkFun2 builtinRouter)
+    , ("get",    mkFun2 $ builtinRouteMethod "GET")
+    , ("post",   mkFun2 $ builtinRouteMethod "POST")
+    , ("put",    mkFun2 $ builtinRouteMethod "PUT")
+    , ("patch",  mkFun2 $ builtinRouteMethod "PATCH")
+    , ("delete", mkFun2 $ builtinRouteMethod "DELETE")
+    -- Request accessors
+    , ("getParam",   mkFun2 builtinGetParam)
+    , ("getQuery",   mkFun2 builtinGetQuery)
+    , ("getBody",    mkFun1 builtinGetBody)
+    , ("getHeader",  mkFun2 builtinGetHeader)
     -- Control
     , ("error",      mkFun1 builtinError)
     , ("undefined",  VIO $ throwIO $ UserError "undefined")
@@ -321,3 +339,65 @@ expectBool v = throwIO $ TypeMismatch $ "esperaba Bool, obtuve: " <> T.pack (sho
 expectInt :: Value -> IO Int
 expectInt (VInt n) = return n
 expectInt v = throwIO $ TypeMismatch $ "esperaba Int, obtuve: " <> T.pack (show v)
+
+
+-- ─── RESPONSE ────────────────────────────────────────────────────────────────
+
+builtinOk :: Value -> IO Value
+builtinOk v = return $ VResponse 200 v
+
+builtinCreated :: Value -> IO Value
+builtinCreated v = return $ VResponse 201 v
+
+builtinNotFound :: Value -> IO Value
+builtinNotFound v = return $ VResponse 404 v
+
+builtinBadRequest :: Value -> IO Value
+builtinBadRequest v = return $ VResponse 400 v
+
+builtinRedirect :: Value -> IO Value
+builtinRedirect (VString url) = return $ VResponse 302 (VString url)
+builtinRedirect v = throwIO $ TypeMismatch "redirect espera String"
+
+-- ─── ROUTER ──────────────────────────────────────────────────────────────────
+builtinRouteMethod :: Text -> Value -> Value -> IO Value
+builtinRouteMethod method handler (VString path) =
+    return $ VRouter $ RouteEntry method path handler 
+builtinRouteMethod _ _ _ = throwIO $ TypeMismatch "get/post/... espera handler y String"
+
+builtinRouter :: Value -> Value -> IO Value
+builtinRouter handler (VString path) =
+    return $ VRouter $ RouteEntry "" path handler
+builtinRouter _ _ = throwIO $ TypeMismatch "router espera handler y String"
+
+-- ─── REQUEST ACCESSORS ───────────────────────────────────────────────────────
+
+builtinGetParam :: Value -> Value -> IO Value
+builtinGetParam (VRequest req) (VString key) =
+    return $ case lookup key (reqParams req) of
+        Just v  -> VCon "Just" [VString v]
+        Nothing -> VCon "Nothing" []
+builtinGetParam (VString key) _ =
+    throwIO $ TypeMismatch "getParam: primer argumento debe ser Request"
+builtinGetParam _ _ = throwIO $ TypeMismatch "getParam espera Request y String"
+
+builtinGetQuery :: Value -> Value -> IO Value
+builtinGetQuery (VRequest req) (VString key) =
+    return $ case lookup key (reqQuery req) of
+        Just v  -> VCon "Just" [VString v]
+        Nothing -> VCon "Nothing" []
+builtinGetQuery _ _ = throwIO $ TypeMismatch "getQuery espera Request y String"
+
+builtinGetBody :: Value -> IO Value
+builtinGetBody (VRequest req) =
+    return $ case reqBody req of
+        Just b  -> VCon "Just" [VString b]
+        Nothing -> VCon "Nothing" []
+builtinGetBody _ = throwIO $ TypeMismatch "getBody espera Request"
+
+builtinGetHeader :: Value -> Value -> IO Value
+builtinGetHeader (VRequest req) (VString key) =
+    return $ case lookup key (reqHeaders req) of
+        Just v  -> VCon "Just" [VString v]
+        Nothing -> VCon "Nothing" []
+builtinGetHeader _ _ = throwIO $ TypeMismatch "getHeader espera Request y String"

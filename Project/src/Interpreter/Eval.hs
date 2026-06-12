@@ -103,6 +103,30 @@ matchAlts env val (CaseAlt pat body : rest) =
         Just bindings -> eval (extendEnvMany bindings env) body
 
 -- | Intenta matchear un patrón contra un valor
+
+evalFuncDecl :: Env -> FuncDecl -> IO Env
+evalFuncDecl env fd =
+    let name = funcName fd
+        cases = funcCases fd
+        fn = VFun $ \arg -> applyFuncCases env cases [arg]
+    in return $ extendEnv name fn env
+
+
+applyFuncCases :: Env -> [FuncCase] -> [Value] -> IO Value
+applyFuncCases _ [] _ = throwIO $ PatternFail "ningún patrón matcheó"
+applyFuncCases env (FuncCase pats body : rest) args =
+    -- si la función necesita más args, devuelve otra VFun
+    if length args < length pats
+        then return $ VFun $ \arg -> applyFuncCases env (FuncCase pats body : rest) (args ++ [arg])
+        else case matchPats pats args of
+            Nothing       -> applyFuncCases env rest args
+            Just bindings -> eval (extendEnvMany bindings env) body
+matchPats :: [Pat] -> [Value] -> Maybe [(Text, Value)]
+matchPats pats vals
+    | length pats /= length vals = Nothing
+    | otherwise = fmap concat $ sequence $ zipWith matchPat pats vals
+
+
 matchPat :: Pat -> Value -> Maybe [(Text, Value)]
 matchPat PWild               _                = Just []
 matchPat (PVar name)         val              = Just [(name, val)]

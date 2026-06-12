@@ -37,19 +37,16 @@ defaultCtx = RequestCtx "GET" [] [] Nothing []
 
 -- | Lee un archivo .hskl, lo parsea, lo interpreta y devuelve el HTML final
 -- Este es el corazón de HSKL: lo que PHP hace por defecto
-runHsklFile :: ServerConfig -> FilePath -> [(Text, Text)] -> IO (Either String String)
+runHsklFile :: ServerConfig -> FilePath -> [(Text, Text)] -> IO (Either String (String, [RouteEntry]))
 runHsklFile config filePath urlParams = do
     let ctx = defaultCtx { ctxUrlParams = urlParams }
     result <- try $ do
-        -- 1. Leer el archivo
         source <- TIO.readFile filePath
-        -- 2. Parsear
         prog   <- parseOrFail filePath source
-        -- 3. Interpretar y renderizar
         runProgram config ctx prog
     return $ case result of
-        Left  (e :: SomeException) -> Left (show e)
-        Right html                 -> Right (T.unpack html)
+        Left  (e :: SomeException)  -> Left (show e)
+        Right (html, routers)       -> Right (T.unpack html, routers)
 
 -- ─── PARSEO ──────────────────────────────────────────────────────────────────
 
@@ -66,68 +63,65 @@ parseOrFail filePath source =
 --   SHtml   → va directo al output
 --   SCode   → evalúa las declaraciones, actualiza el entorno
 --   SInterp → evalúa la expresión y agrega el resultado al output
-runProgram :: ServerConfig -> RequestCtx -> Program -> IO Text
+runProgram :: ServerConfig -> RequestCtx -> Program -> IO (Text, [RouteEntry])
 runProgram config ctx (Program sections) = do
     let baseEnv = buildBaseEnv ctx
-    (_, html, clientFuncs) <- foldSections baseEnv sections
+    (_, html, clientFuncs, routers) <- foldSections baseEnv sections
     let script = generateScript clientFuncs
-    return (html <> script)
+    return (html <> script, routers)
   where
-    foldSections env [] = return (env, "", [])
+    foldSections env [] = return (env, "", [], [])
     foldSections env (sec : rest) = do
-        (env', piece, fds) <- runSection config ctx env sec
-        (envFinal, restHtml, restFds) <- foldSections env' rest
-        return (envFinal, piece <> restHtml, fds ++ restFds)
+        (env', piece, fds, routes) <- runSection config ctx env sec
+        (envFinal, restHtml, restFds, restRoutes) <- foldSections env' rest
+        return (envFinal, piece <> restHtml, fds ++ restFds, routes ++ restRoutes)
 
 -- | Procesa una sección del archivo
--- Devuelve (entorno actualizado, HTML generado, funciones @client)
-runSection :: ServerConfig -> RequestCtx -> Env -> Section -> IO (Env, Text, [FuncDecl])
-
-runSection _ _ env (SHtml raw) = return (env, raw, [])
+-- Devuelve (entorno actualizado, HTML generado, funciones @client, routers)
+runSection :: ServerConfig -> RequestCtx -> Env -> Section -> IO (Env, Text, [FuncDecl], [RouteEntry])
+runSection _ _ env (SHtml raw) =
+    return (env, raw, [], [])
 
 runSection config ctx env (SCode decls) = do
-    (env', fds) <- foldDecls config ctx env decls
-    return (env', "", fds)
+    (env', fds, routers) <- foldDecls config ctx env decls
+    return (env', "", fds, routers)
 
-runSection config ctx env (SInterp expr) = do
+runSection _ _ env (SInterp expr) = do
     val  <- eval env expr
-    html <- valueToHtml val
-    return (env, html, [])
+    h    <- valueToHtml val
+    return (env, h, [], [])
 
--- ─── DECLARACIONES ───────────────────────────────────────────────────────────
 
--- | Evalúa una lista de declaraciones y actualiza el entorno
--- Devuelve también las funciones @client para transpilar
-foldDecls :: ServerConfig -> RequestCtx -> Env -> [Decl] -> IO (Env, [FuncDecl])
-foldDecls _      _   env []           = return (env, [])
+
+foldDecls :: ServerConfig -> RequestCtx -> Env -> [Decl] -> IO (Env, [FuncDecl], [RouteEntry])
+foldDecls _ _ env [] = return (env, [], [])
 foldDecls config ctx env (decl : rest) = do
-    (env', mfd) <- evalDecl config ctx env decl
-    (envFinal, fds) <- foldDecls config ctx env' rest
-    return (envFinal, maybe fds (:fds) mfd)
+    (env', mfd, mroute) <- evalDecl config ctx env decl
+    (envFinal, fds, routes) <- foldDecls config ctx env' rest
+    return (envFinal, maybe fds (:fds) mfd, maybe routes (:routes) mroute)
 
--- | Evalúa una declaración y la agrega al entorno
--- Devuelve (env actualizado, Just fd si es @client para transpilar)
-evalDecl :: ServerConfig -> RequestCtx -> Env -> Decl -> IO (Env, Maybe FuncDecl)
-
+evalDecl :: ServerConfig -> RequestCtx -> Env -> Decl -> IO (Env, Maybe FuncDecl, Maybe RouteEntry)
 evalDecl config ctx env (DFunc fd)
-    -- @client: no evalúa en servidor, lo guarda para el transpilador
     | funcFlag fd == Just FClient =
-        return (env, Just fd)
-    -- @server o sin flag: evalúa normal
+        return (env, Just fd, Nothing)
     | otherwise = do
         val <- makeFuncValue env fd
-        return (extendEnv (funcName fd) val env, Nothing)
+        let env' = extendEnv (funcName fd) val env
+        -- si el valor es un VRouter, lo extraemos
+        case val of
+            VRouter route -> return (env', Nothing, Just route)
+            _             -> return (env', Nothing, Nothing)
 
 evalDecl _ _ env (DData dd) = do
-    let constructors = map makeConstructor (dataCons dd)
-    return (extendEnvMany constructors env, Nothing)
+    let constructors = concatMap makeConstructor (dataCons dd)
+    return (extendEnvMany constructors env, Nothing, Nothing)
 
 evalDecl config ctx env (DClass cd) = do
     let members = classMembers cd
     memberVals <- mapM (evalClassMember env) members
-    return (extendEnvMany memberVals env, Nothing)
+    return (extendEnvMany memberVals env, Nothing, Nothing)
 
-evalDecl _ _ env (DImport _) = return (env, Nothing)
+evalDecl _ _ env (DImport _) = return (env, Nothing, Nothing)
 
 -- ─── CONSTRUCCIÓN DE FUNCIONES ───────────────────────────────────────────────
 
@@ -135,20 +129,31 @@ evalDecl _ _ env (DImport _) = return (env, Nothing)
 -- La clave es crear un closure que capture el entorno actual
 makeFuncValue :: Env -> FuncDecl -> IO Value
 makeFuncValue env fd =
-    case funcArgs fd of
-        -- Sin argumentos: evalúa directo, es un valor no una función
-        [] -> eval env (funcBody fd)
-        -- Con argumentos: crea función curried
-        args -> return $ curryLam env args (funcBody fd)
+    case funcCases fd of
+        []                          -> throwIO $ UserError $ "función sin casos: " <> funcName fd
+        [FuncCase [] body]          -> eval env body
+        cases                       -> return $ VFun $ \arg -> applyFuncCases env cases [arg]
+
 
 -- | Construye un constructor de data como Value
 -- Si tiene campos, es una función; si no, es un VCon directo
-makeConstructor :: Constructor -> (Text, Value)
-makeConstructor (Constructor name []) =
-    (name, VCon name [])
-makeConstructor (Constructor name fields) =
-    (name, buildConFun name (length fields))
-
+makeConstructor :: Constructor -> [(Text, Value)]
+makeConstructor (Constructor name [] []) =
+    [(name, VCon name [])]
+makeConstructor (Constructor name fields []) =
+    [(name, buildConFun name (length fields))]
+makeConstructor (Constructor name fields records) =
+    -- el constructor mismo
+    (name, buildRecordConFun name (map fst records))
+    -- un accessor por cada campo
+    : [ (fname, VFun $ \case
+            VCon n vs | n == name ->
+                case lookup fname (zip (map fst records) vs) of
+                    Just v  -> return v
+                    Nothing -> throwIO $ UserError $ "campo no encontrado: " <> fname
+            other -> throwIO $ TypeMismatch $ "esperaba " <> name)
+      | (fname, _) <- records
+      ]
 -- | Crea una función que acumula N argumentos y devuelve el VCon
 buildConFun :: Text -> Int -> Value
 buildConFun name 0    = VCon name []
@@ -156,6 +161,12 @@ buildConFun name n    = go name n []
   where
     go name 0 acc = VCon name (reverse acc)
     go name n acc = VFun $ \v -> return $ go name (n-1) (v:acc)
+
+buildRecordConFun :: Text -> [Text] -> Value
+buildRecordConFun name fields = go fields []
+  where
+    go []     acc = VCon name (reverse acc)
+    go (_:fs) acc = VFun $ \v -> return $ go fs (v:acc)
 
 -- | Evalúa un miembro de clase
 evalClassMember :: Env -> ClassMember -> IO (Text, Value)
@@ -174,15 +185,18 @@ buildBaseEnv ctx =
     emptyEnv
   where
     httpVars =
-        -- Equivalentes a las superglobales de PHP
         [ ("_method",  VString $ ctxMethod ctx)
         , ("_params",  VList $ map pairToVal $ ctxUrlParams ctx)
         , ("_query",   VList $ map pairToVal $ ctxQuery ctx)
         , ("_body",    maybe VUnit VString $ ctxBody ctx)
         , ("_headers", VList $ map pairToVal $ ctxHeaders ctx)
-        -- Helpers para acceder a params individuales
-        , ("getParam", makeGetParam (ctxUrlParams ctx))
-        , ("getQuery", makeGetParam (ctxQuery ctx))
+        , ("request",  VRequest $ RequestData
+                { reqMethod  = ctxMethod ctx
+                , reqParams  = ctxUrlParams ctx
+                , reqQuery   = ctxQuery ctx
+                , reqBody    = ctxBody ctx
+                , reqHeaders = ctxHeaders ctx
+                })
         ]
     pairToVal (k, v) = VTuple [VString k, VString v]
 

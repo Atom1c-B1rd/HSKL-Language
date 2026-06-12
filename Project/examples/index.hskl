@@ -1,7 +1,4 @@
 <?hs
-
-
-
 @server
 saludo :: String -> String
 saludo nombre = "Hola " ++ nombre ++ " desde HSKL!"

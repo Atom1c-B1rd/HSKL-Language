@@ -20,12 +20,26 @@ data Value
     | VRef    (IORef Value)         -- @state / ref, solo en @client
     | VHtml   Text                  -- resultado HTML renderizado
     | VIO     (IO Value)            -- acción IO sin ejecutar
-    -- Función: cierra sobre su entorno (closure)
-    -- Esto es lo que permite funciones de primera clase
+    | VResponse Int Value
+    | VRouter RouteEntry
+    | VRequest  RequestData
     | VFun    (Value -> IO Value)
     -- Constructor de data: guarda su nombre y campos ya evaluados
     | VCon    Text [Value]
 
+data RouteEntry = RouteEntry
+    { routeMethod  :: Text         -- "GET", "POST", etc.
+    , routeEntryPath    :: Text         -- "/users/:id"
+    , routeHandler :: Value        -- la función handler
+    } deriving (Show)
+
+data RequestData = RequestData
+    { reqMethod  :: Text
+    , reqParams  :: [(Text, Text)]
+    , reqQuery   :: [(Text, Text)]
+    , reqBody    :: Maybe Text
+    , reqHeaders :: [(Text, Text)]
+    } deriving (Show)
 -- VFun no puede derivar Show automaticamente porque contiene una función
 -- asi que lo hacemos manual
 instance Show Value where
@@ -42,6 +56,10 @@ instance Show Value where
     show (VFun    _)   = "<function>"
     show (VCon n [])   = T.unpack n
     show (VCon n vs)   = T.unpack n ++ " " ++ unwords (map show vs)
+    show (VResponse code _) = "<response " ++ show code ++ ">"
+    show (VRouter r) = "<router " ++ T.unpack (routeEntryPath r) ++ ">"
+    show (VRequest  _)      = "<request>"
+    
 
 -- ─── ENTORNO ─────────────────────────────────────────────────────────────────
 

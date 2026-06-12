@@ -7,12 +7,13 @@ import qualified AtomHtml.Types  as AH (HtmlNode(..))
 import qualified Data.Text as T
 import Data.Void (Void)
 import Data.Maybe (fromMaybe)
-import Control.Monad (void)
+import Control.Monad (void, guard)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import Lexer.Tokens (Flag(..))
 import Parser.AST
+--import Debug.Trace
 
 -- ─── SETUP ───────────────────────────────────────────────────────────────────
 
@@ -116,11 +117,13 @@ parseTypeApp = do
 -- | Tipo atómico: el más básico, sin aplicación ni ->
 parseTypeAtom :: Parser Type
 parseTypeAtom = choice
-    [ TyUnit <$ try (symbol "()")
-    , TyHtml <$ try (keyword "Html")
+    [ TyUnit     <$ try (symbol "()")
+    , TyHtml     <$ try (keyword "Html")
+    , TyRequest  <$ try (keyword "Request")
+    , try $ TyResponse <$> (keyword "Response" *> parseTypeAtom)
+    , try $ TyRouter   <$> (keyword "Router"   *> parseTypeAtom)
     , TyTuple <$> between (symbol "(") (symbol ")") (parseType `sepBy1` symbol ",")
     , TyList  <$> between (symbol "[") (symbol "]") parseType
-    -- paréntesis solos para agrupar: (String -> Int)
     , between (symbol "(") (symbol ")") parseType
     , TyCon <$> parseConstr
     ]
@@ -258,8 +261,11 @@ parseCompose = do
 parseApp :: Parser Expr
 parseApp = do
     f    <- parseAtom
-    args <- many parseAtom   -- los argumentos son átomos (no expresiones completas)
-    -- foldl construye la aplicación izquierda: f x y = App (App f x) y
+    line <- sourceLine <$> getSourcePos
+    args <- many $ try $ do
+        curLine <- sourceLine <$> getSourcePos
+        guard (unPos curLine == unPos line)
+        parseAtom
     return $ foldl EApp f args
 
 -- Nivel 10: átomos (no se pueden descomponer más sin paréntesis)
@@ -327,17 +333,44 @@ parseIfExpr = do
 parseCaseExpr :: Parser Expr
 parseCaseExpr = do
     void $ keyword "case"
-    e    <- parseExpr
+    e <- parseExpr
     void $ keyword "of"
-    -- EJEMPLO: bloque de indentación con megaparsec
-    alts <- parseBlock parseCaseAlt
+    alts <- parseBlockWith parseCaseAlt
     return $ ECase e alts
+
+parseBlockWith :: Parser a -> Parser [a]
+parseBlockWith p = do
+    explicit <- optional $ try (scn *> symbol "{")
+    case explicit of
+        Just _ ->
+            p `sepEndBy` (symbol ";" <|> (T.pack "\n" <$ newline)) <* symbol "}"
+        Nothing -> do
+            scn
+            ref <- L.indentLevel
+            first <- p
+            rest <- many $ try $ do
+                scn
+                lvl <- L.indentLevel
+                guard (lvl == ref)
+                p
+            return (first : rest)
+
 
 parseCaseAlt :: Parser CaseAlt
 parseCaseAlt = do
-    pat <- parsePat
+    lvl  <- L.indentLevel
+    pat  <- parsePat
     void $ symbol "->"
-    CaseAlt pat <$> parseExpr
+    body <- parseExpr
+    return $ CaseAlt pat body
+
+parseExprNoNewline :: Parser Expr
+parseExprNoNewline = do
+    pos <- L.indentLevel
+    parseExprAtLevel pos
+
+parseExprAtLevel :: Pos -> Parser Expr
+parseExprAtLevel pos = parseBindExpr
 
 -- | Do notation
 parseDoExpr :: Parser Expr
@@ -369,7 +402,10 @@ parsePatAtom = choice
     [ PWild  <$  symbol "_"
     , PLit   <$> parseLiteralPat
     , PCon   <$> parseConstr <*> pure []
-    , PVar   <$> parseIdent
+    , try $ between (symbol "(") (symbol ")") parsePat
+    , try $ do
+        notFollowedBy (string "->")
+        PVar <$> parseIdent
     ]
 
 parseLiteralPat :: Parser Literal
@@ -404,9 +440,26 @@ parseDataDecl = do
 
 parseConstructor :: Parser Constructor
 parseConstructor = do
-    name   <- parseConstr
-    fields <- many parseTypeAtom   -- campos son tipos atómicos
-    return $ Constructor name fields
+    name <- parseConstr
+    choice
+        [ try $ do
+            scn
+            records <- between (symbol "{") (symbol "}") $
+                parseRecordField `sepBy1` symbol ","
+            return $ Constructor name (map snd records) records
+        , do
+            fields <- many parseTypeAtom
+            return $ Constructor name fields []
+        ]
+
+parseRecordField :: Parser (Text, Type)
+parseRecordField = do
+    scn
+    fname <- parseIdent
+    void $ symbol "::"
+    t <- parseType
+    scn
+    return (fname, t)
 
 -- | class Nombre impl Ejemplo { ... }
 parseClassDecl :: Parser ClassDecl
@@ -429,23 +482,27 @@ parseClassMember = do
 -- nombre args = expr
 parseFuncDecl :: Parser FuncDecl
 parseFuncDecl = do
-    flag    <- parseFlag
+    flag <- parseFlag
     scn
-    name    <- parseIdent
-    sig     <- optional $ try $ do
+    name <- parseIdent
+    sig  <- optional $ try $ do
         void $ symbol "::"
         parseType
     scn
-    defName <- parseIdent
-    if defName /= name
-        then fail $ "esperaba definición de '" ++ T.unpack name ++ "' pero encontré '" ++ T.unpack defName ++ "'"
-        else do
-            args <- many parseIdent
-            void $ symbol "="
-            body <- case fmap returnType sig of
-                Just TyHtml -> EHtml <$> parseHtmlBody  -- ← rama nueva
-                _           -> parseExpr
-            return $ FuncDecl flag name sig args body
+    cases <- some $ try $ do
+        defName <- parseIdent
+        if defName /= name
+            then fail $ "esperaba '" ++ T.unpack name ++ "'"
+            else do
+                args <- many parsePatAtom   -- ← Pat en vez de Text
+                void $ symbol "="
+                scn
+                body <- case fmap returnType sig of
+                    Just TyHtml -> EHtml <$> parseHtmlBody
+                    _           -> parseExpr
+                scn
+                return $ FuncCase args body
+    return $ FuncDecl flag name sig cases
 
 
 parseHtmlBody :: Parser [HtmlNode]
@@ -538,7 +595,7 @@ parseHtmlBlock = do
 
 parseHtmlNode :: Parser HtmlNode
 parseHtmlNode = choice
-    [ HtmlExpr <$> parseInterpInline
+    [ try $ HtmlExpr <$> parseInterpInline
     , try $ HtmlComp <$> parseOpenComp <*> many parseHtmlNode <* parseCloseComp
     , HtmlRaw  <$> parseRawHtml
     ]
@@ -556,6 +613,7 @@ parseRawHtml :: Parser Text
 parseRawHtml = do
     chars <- some $ do
         notFollowedBy (void parseOpenComp)
+        notFollowedBy (void parseCloseComp)
         notFollowedBy (string "<?")
         anySingle
     return $ T.pack chars
@@ -564,15 +622,16 @@ parseOpenComp :: Parser Text
 parseOpenComp = try $ do
     void $ char '<'
     notFollowedBy (char '/')
-    first <- upperChar
-    rest  <- many alphaNumChar
+    notFollowedBy (char '?')     -- ← no confundir con <?=
+    first <- letterChar           -- ← era upperChar, ahora acepta minúsculas
+    rest  <- many (alphaNumChar <|> char '-')
     void $ char '>'
     return $ T.pack (first:rest)
 
 parseCloseComp :: Parser Text
 parseCloseComp = try $ do
     void $ string "</"
-    first <- upperChar
-    rest  <- many alphaNumChar
+    first <- letterChar           -- ← era upperChar
+    rest  <- many (alphaNumChar <|> char '-')
     void $ char '>'
     return $ T.pack (first:rest)

@@ -2,6 +2,8 @@ module Server.Server where
 
 import Web.Scotty
 import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Encoding as TE
+import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.Directory (listDirectory, doesFileExist, doesDirectoryExist)
@@ -12,6 +14,8 @@ import Data.List (isPrefixOf, sort)
 
 import Server.Runner
 import Server.ServerConfig
+import Interpreter.Value (Value(..), RouteEntry(..), RequestData(..))
+import Interpreter.Eval  (applyValue)
 
 -- ─── ENTRY POINT ─────────────────────────────────────────────────────────────
 
@@ -19,7 +23,7 @@ import Server.ServerConfig
 -- Uso:
 --   startServer defaultConfig
 --   startServer defaultConfig { configPort = 8080, configRoot = "./src/pages" }
-startServer :: Server.ServerConfig.ServerConfig -> IO ()
+startServer :: ServerConfig -> IO ()
 startServer config = do
     routes <- discoverRoutes (configRoot config)
     putStrLn $ "🚀 HSKL corriendo en http://localhost:" ++ show (configPort config)
@@ -27,11 +31,19 @@ startServer config = do
     putStrLn $ "📋 Rutas encontradas:"
     mapM_ (\r -> putStrLn $ "   " ++ showRoute r) routes
     putStrLn ""
+    codeRouters <- concat <$> mapM (extractRouters config) routes
+    putStrLn $ "📋 Rutas agregadas:"
+    mapM_ (\r -> putStrLn $ "   " ++ T.unpack (routeMethod r) ++ " " ++ T.unpack (routeEntryPath r)) codeRouters
     scotty (configPort config) $ do
-        -- Archivos estáticos primero
-        -- middleware $ staticPolicy (addBase (configStatic config))
-        -- Rutas dinámicas generadas desde los archivos
-        mapM_ (registerRoute config) routes
+        mapM_ (registerCodeRoute config) codeRouters  -- ← rutas de código primero
+        mapM_ (registerRoute config) routes 
+
+extractRouters :: ServerConfig -> Route -> IO [RouteEntry]
+extractRouters config route = do
+    result <- runHsklFile config (routePath route) []
+    return $ case result of
+        Left  _            -> []
+        Right (_, routers) -> routers
 
 -- ─── DESCUBRIMIENTO DE RUTAS ─────────────────────────────────────────────────
 
@@ -131,18 +143,53 @@ fileToRoute root filePath =
 -- | Registra una ruta en Scotty
 -- Por ahora solo GET, después agregaremos POST/PUT/DELETE
 -- cuando tengamos las funciones de API en el lenguaje
-registerRoute :: Server.ServerConfig.ServerConfig -> Route -> ScottyM ()
+registerRoute :: ServerConfig -> Route -> ScottyM ()
 registerRoute config route =
     get (capture $ routePattern route) $ do
-        params' <- params
-        let urlParams = buildParams (routeSegments route) params'
+        ps <- params
+        let urlParams = [(k, v) | (k, v) <- ps]
         result <- liftIO $ runHsklFile config (routePath route) urlParams
         case result of
-            Left  err  -> do
+            Left err -> do
                 status $ toEnum 500
                 html $ TL.fromStrict $ T.pack $ errorPage err
-            Right html' ->
+            Right (html', _) ->
                 html $ TL.fromStrict $ T.pack html'
+
+registerCodeRoute :: ServerConfig -> RouteEntry -> ScottyM ()
+registerCodeRoute config re@(RouteEntry method path handler) = do
+    let action = capture $ T.unpack path
+    case method of
+        "GET"    -> get    action $ handleRoute config handler
+        "POST"   -> post   action $ handleRoute config handler
+        "PUT"    -> put    action $ handleRoute config handler
+        "PATCH"  -> patch  action $ handleRoute config handler
+        "DELETE" -> delete action $ handleRoute config handler
+        _        -> return ()
+
+handleRoute :: ServerConfig -> Value -> ActionM ()
+handleRoute config handler = do
+    ps <- params
+    b  <- body
+    let bodyText = TE.decodeUtf8 $ BL.toStrict b
+    hs <- headers
+    let req = VRequest $ RequestData
+                { reqMethod  = "GET"
+                , reqParams  = [(k, v) | (k, v) <- ps]
+                , reqQuery   = []
+                , reqBody    = Just bodyText
+                , reqHeaders = [(TL.toStrict k, TL.toStrict v) | (k, v) <- hs]
+                }
+    (code, val) <- liftIO $ do
+        resp <- applyValue handler req
+        case resp of
+            VResponse code val -> return (code, val)
+            other              -> return (200, other)
+    case (code, val) of
+        (302, VString u) -> redirect $ TL.fromStrict u
+        (_, VHtml h)     -> do status (toEnum code); html $ TL.fromStrict h
+        (_, VString s)   -> do status (toEnum code); text $ TL.fromStrict s
+        (_, v)           -> do status (toEnum code); text $ TL.pack $ show v
 
 -- | Construye el mapa de parámetros URL
 buildParams :: [Segment] -> [(Text, Text)] -> [(Text, Text)]

@@ -3,7 +3,7 @@ module Transpiler.JsGen where
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Parser.AST (Expr(..), HtmlNode(..), FuncDecl(..), DoStmt(..), BinOp(..), UnOp(..), CaseAlt(..), Pat(..), Literal(..), Type(..))
+import Parser.AST (Expr(..), HtmlNode(..), FuncDecl(..), FuncCase(..), DoStmt(..), BinOp(..), UnOp(..), CaseAlt(..), Pat(..), Literal(..), Type(..))
 import Lexer.Tokens (Flag(..))
 
 -- ─── ENTRY POINT ─────────────────────────────────────────────────────────────
@@ -20,28 +20,53 @@ import Lexer.Tokens (Flag(..))
 
 transpileDecl :: FuncDecl -> Text
 transpileDecl fd =
-    case (fmap returnType (funcType fd), funcBody fd) of
-        -- función que devuelve Html: genera [html| ... |]
-        (Just TyHtml, EHtml nodes) ->
-            funcName fd <> " :: T.Text\n"
-            <> funcName fd <> argsStr <> " = [html|\n"
-            <> reconstructHtml nodes
-            <> "\n|]\n"
-        -- resto: JS como antes
-        _ -> case funcArgs fd of
-            [] ->
-                "function " <> funcName fd <> "() {\n"
-                <> "  return " <> transpileExpr (funcBody fd) <> ";\n"
-                <> "}\n"
-            args ->
-                "function " <> funcName fd
-                <> "(" <> T.intercalate ", " args <> ") {\n"
-                <> "  return " <> transpileExpr (funcBody fd) <> ";\n"
-                <> "}\n"
+    let name  = funcName fd
+        cases = funcCases fd
+    in case cases of
+        -- caso simple: una sola ecuación sin patrones complejos
+        [FuncCase args body] ->
+            case (fmap returnType (funcType fd), body) of
+                (Just TyHtml, EHtml nodes) ->
+                    -- devuelve HTML, va al servidor
+                    name <> " = " <> reconstructHtml nodes <> "\n"
+                _ ->
+                    -- JS normal
+                    let argNames = map patToJs args
+                    in "function " <> name
+                       <> "(" <> T.intercalate ", " argNames <> ") {\n"
+                       <> "  return " <> transpileExpr body <> ";\n"
+                       <> "}\n"
+        -- múltiples casos: genera if/else por pattern matching
+        _ ->
+            "function " <> name <> "(...__args) {\n"
+            <> T.concat (map (transpileFuncCase name) cases)
+            <> "  throw new Error('pattern match failed: " <> name <> "');\n"
+            <> "}\n"
+
+transpileFuncCase :: Text -> FuncCase -> Text
+transpileFuncCase _ (FuncCase pats body) =
+    "  if (" <> T.intercalate " && " (zipWith patCondition ["__args[" <> T.pack (show i) <> "]" | i <- [0..]] pats) <> ") {\n"
+    <> "    " <> patBindings pats <> "\n"
+    <> "    return " <> transpileExpr body <> ";\n"
+    <> "  }\n"
+
+patCondition :: Text -> Pat -> Text
+patCondition arg PWild       = "true"
+patCondition arg (PVar _)    = "true"
+patCondition arg (PLit lit)  = arg <> " === " <> transpileLit lit
+patCondition arg (PCon n _)  = arg <> "?.tag === \"" <> n <> "\""
+patCondition arg _           = "true"
+
+patBindings :: [Pat] -> Text
+patBindings pats = T.concat $ zipWith bind ["__args[" <> T.pack (show i) <> "]" | i <- [0..]] pats
   where
-    argsStr
-        | null (funcArgs fd) = ""
-        | otherwise = " " <> T.unwords (funcArgs fd)
+    bind arg (PVar n)     = "const " <> n <> " = " <> arg <> "; "
+    bind arg (PCon _ sub) = T.concat $ zipWith (\i p -> bind (arg <> ".fields[" <> T.pack (show i) <> "]") p) [0..] sub
+    bind _   _            = ""
+
+patToJs :: Pat -> Text
+patToJs (PVar n) = n
+patToJs _        = "__p"
 
 returnType :: Type -> Type
 returnType (TyFun _ r) = returnType r

@@ -218,15 +218,7 @@ makeGetParam pairs = VFun $ \case
 
 
 -- | Escapa HTML para evitar XSS (igual que htmlspecialchars de PHP)
-escapeHtml :: Text -> Text
-escapeHtml = T.concatMap escape
-  where
-    escape '<'  = "&lt;"
-    escape '>'  = "&gt;"
-    escape '&'  = "&amp;"
-    escape '"'  = "&quot;"
-    escape '\'' = "&#39;"
-    escape c    = T.singleton c
+
 
 -- | Para HTML crudo sin escapar (equivalente a echo $html en PHP)
 -- El usuario tiene que usar esto explícitamente, es más seguro

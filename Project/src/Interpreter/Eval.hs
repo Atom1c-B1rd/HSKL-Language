@@ -222,7 +222,7 @@ evalUnOp _     v          = throwIO $ TypeMismatch $
 -- | Convierte un Value a Text HTML (para interpolaciones)
 valueToHtml :: Value -> IO Text
 valueToHtml VUnit          = return ""
-valueToHtml (VString s)    = return s
+valueToHtml (VString s)    = return (escapeHtml s) 
 valueToHtml (VInt    n)    = return (T.pack $ show n)
 valueToHtml (VFloat  f)    = return (T.pack $ show f)
 valueToHtml (VBool True)   = return "true"
@@ -231,3 +231,13 @@ valueToHtml (VHtml   h)    = return h
 valueToHtml (VList   vs)   = T.concat <$> mapM valueToHtml vs
 valueToHtml (VIO action)   = action >>= valueToHtml
 valueToHtml other          = return $ T.pack (show other)
+
+escapeHtml :: Text -> Text
+escapeHtml = T.concatMap escape
+  where
+    escape '<'  = "&lt;"
+    escape '>'  = "&gt;"
+    escape '&'  = "&amp;"
+    escape '"'  = "&quot;"
+    escape '\'' = "&#39;"
+    escape c    = T.singleton c

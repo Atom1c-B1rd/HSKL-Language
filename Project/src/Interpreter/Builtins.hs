@@ -94,6 +94,8 @@ builtins =
     , ("error",      mkFun1 builtinError)
     , ("undefined",  VIO $ throwIO $ UserError "undefined")
     , ("return",     mkFun1 builtinReturn)
+    --unsafeHTML
+    , ("unsafeRawHtml", mkFun1 builtinUnsafeRawHtml)
     ]
 
 -- ─── HELPERS PARA CREAR BUILTINS ─────────────────────────────────────────────
@@ -401,3 +403,8 @@ builtinGetHeader (VRequest req) (VString key) =
         Just v  -> VCon "Just" [VString v]
         Nothing -> VCon "Nothing" []
 builtinGetHeader _ _ = throwIO $ TypeMismatch "getHeader espera Request y String"
+
+builtinUnsafeRawHtml :: Value -> IO Value
+builtinUnsafeRawHtml (VString s) = return $ VHtml s
+builtinUnsafeRawHtml (VHtml   h) = return $ VHtml h
+builtinUnsafeRawHtml v = throwIO $ TypeMismatch "unsafeRawHtml espera String"

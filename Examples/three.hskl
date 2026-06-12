@@ -1,0 +1,16 @@
+<?hs
+products :: [String]
+products = ["Apple", "Banana", "Orange"]
+
+renderItem :: String -> String
+renderItem name = "<li>" ++ name ++ "</li>"
+
+listHtml :: String
+listHtml = concat (map renderItem products)
+?>
+
+<html>
+<body>
+  <ul><?= listHtml ?></ul>
+</body>
+</html>

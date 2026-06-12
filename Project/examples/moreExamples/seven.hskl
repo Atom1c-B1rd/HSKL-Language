@@ -1,0 +1,22 @@
+<?hs
+data Product = Product String Double  -- name, price
+
+finalPrice :: Product -> Double
+finalPrice (Product _ price) =
+    let discount = price * 0.1
+        tax      = price * 0.21
+    in  price - discount + tax
+
+renderProduct :: Product -> String
+renderProduct (Product name price) =
+    name ++ ": $" ++ show (finalPrice (Product name price))
+
+laptop :: Product
+laptop = Product "Laptop" 1000.0
+?>
+
+<html>
+<body>
+  <p><?= renderProduct laptop ?></p>
+</body>
+</html>

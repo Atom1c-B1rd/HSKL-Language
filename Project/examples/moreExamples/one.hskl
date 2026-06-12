@@ -1,0 +1,14 @@
+<?hs
+siteName :: String
+siteName = "My Site"
+
+year :: Int
+year = 2025
+?>
+
+<html>
+<body>
+  <h1><?= siteName ?></h1>
+  <footer>© <?= show year ?></footer>
+</body>
+</html>

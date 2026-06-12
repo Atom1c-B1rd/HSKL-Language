@@ -1,0 +1,19 @@
+<?hs
+@client
+increment :: Int -> Int
+increment n = n + 1
+
+@client
+handleClick :: () -> ()
+handleClick _ =
+    let current = getText "display"
+        next    = show (increment (toInt current))
+    in  setText "display" next
+?>
+
+<html>
+<body>
+  <h1 id="display">0</h1>
+  <button onclick="handleClick(null)">+1</button>
+</body>
+</html>

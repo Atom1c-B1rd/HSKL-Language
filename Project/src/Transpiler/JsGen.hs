@@ -66,6 +66,7 @@ patBindings pats = T.concat $ zipWith bind ["__args[" <> T.pack (show i) <> "]" 
 
 patToJs :: Pat -> Text
 patToJs (PVar n) = n
+patToJs PWild    = ""
 patToJs _        = "__p"
 
 returnType :: Type -> Type
@@ -310,19 +311,21 @@ runtimeHelpers = T.unlines
     , "const getValue = (id) => document.getElementById(id)?.value ?? '';"
     , "const getText  = (id) => document.getElementById(id)?.textContent ?? '';"
     -- DOM - setear valores  
-    , "const setValue = (id) => (val) => { document.getElementById(id).value = val; };"
-    , "const setText  = (id) => (val) => { document.getElementById(id).textContent = val; };"
-    , "const setHtml  = (id) => (val) => { document.getElementById(id).innerHTML = val; };"
+    , "const setValue = (id, val) => { document.getElementById(id).value = val; };"
+    , "const setText  = (id, val) => { document.getElementById(id).textContent = val; };"
+    , "const setHtml  = (id, val) => { document.getElementById(id).innerHTML = val; };"
     -- DOM - eventos
     , "const preventDefault = (e) => { e.preventDefault(); };"
     , "const stopPropagation = (e) => { e.stopPropagation(); };"
     -- DOM - clases CSS
-    , "const addClass    = (id) => (cls) => document.getElementById(id).classList.add(cls);"
-    , "const removeClass = (id) => (cls) => document.getElementById(id).classList.remove(cls);"
-    , "const toggleClass = (id) => (cls) => document.getElementById(id).classList.toggle(cls);"
+    , "const addClass    = (id, cls) => document.getElementById(id).classList.add(cls);"
+    , "const removeClass = (id, cls) => document.getElementById(id).classList.remove(cls);"
+    , "const toggleClass = (id, cls) => document.getElementById(id).classList.toggle(cls);"
     -- Fetch al servidor (para después)
     , "const fetchGet  = (url) => fetch(url).then(r => r.json());"
-    , "const fetchPost = (url) => (body) => fetch(url, {method:'POST', body: JSON.stringify(body)}).then(r => r.json());"
+    , "const fetchPost = (url, body) => fetch(url, {method:'POST', body: JSON.stringify(body)}).then(r => r.json());"
+    , "const toInt   = (x) => parseInt(x, 10);"
+    , "const toFloat = (x) => parseFloat(x);"
     ]
 
 -- ─── HTML ────────────────────────────────────────────────────────────────────

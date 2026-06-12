@@ -1,0 +1,16 @@
+<?hs
+search :: Request -> Response Html
+search req =
+    case getQuery req "q" of
+        Just q  -> ok <div>
+                       <h1>Results for: <?= q ?></h1>
+                       <p>Results would go here...</p>
+                   </div>
+        Nothing -> ok <div>
+                        <h1>Search</h1>
+                        <p>Add ?q=term to the URL to search</p>
+                    </div>
+
+routeSearch :: Router Get
+routeSearch = get search "/search"
+?>

@@ -1,0 +1,13 @@
+<?hs
+createComment :: Request -> Response Html
+createComment req =
+    case getBody req of
+        Just body -> created <div>
+                         <p>Comment saved:</p>
+                         <blockquote><?= body ?></blockquote>
+                     </div>
+        Nothing   -> badRequest "Comment cannot be empty"
+
+routeComment :: Router Post
+routeComment = post createComment "/comments"
+?>

@@ -310,6 +310,8 @@ runtimeHelpers = T.unlines
     -- DOM - obtener valores
     , "const getValue = (id) => document.getElementById(id)?.value ?? '';"
     , "const getText  = (id) => document.getElementById(id)?.textContent ?? '';"
+    , "const getHtml  = (id) => document.getElementById(id)?.innerHTML ?? '';"
+    , "const getElement  = (id) => document.getElementById(id)?.outerHTML ?? '';"
     -- DOM - setear valores  
     , "const setValue = (id, val) => { document.getElementById(id).value = val; };"
     , "const setText  = (id, val) => { document.getElementById(id).textContent = val; };"

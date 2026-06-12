@@ -6,24 +6,26 @@ items :: [Item]
 items = [Item "Buy milk" False, Item "Call doctor" True, Item "Learn HSKL" False]
 
 renderItem :: Item -> String
-renderItem (Item text True)  = "<li><s>" ++ text ++ "</s></li>"
-renderItem (Item text False) = "<li>" ++ text ++ "</li>"
+renderItem (Item text True)  = "<li><s>" ++ text ++ "</s></li>\n"
+renderItem (Item text False) = "<li>" ++ text ++ "</li>\n"
+
 
 listHtml :: String
 listHtml = concat (map renderItem items)
+
 
 -- Client: adds new items
 @client
 addItem :: () -> ()
 addItem _ =
     let text = getValue "new-item"
-        html = "<li>" ++ text ++ "</li>"
-    in  setHtml "list" (getText "list" ++ html)
+        html =" <li>"++text++"</li>"
+    in  setHtml "list" (getHtml "list" ++ html)
 ?>
 
 <html>
 <body>
-  <ul id="list"><?= listHtml ?></ul>
+  <ul id="list"></ul>
   <input id="new-item" type="text" placeholder="New item" />
   <button onclick="addItem()">Add</button>
 </body>
